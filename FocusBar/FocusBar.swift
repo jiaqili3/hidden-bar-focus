@@ -17,12 +17,17 @@ enum NativeVisibilityEngine {
 @main
 final class FocusBar: NSObject, NSApplicationDelegate {
     private static let focusKey = "lastDoNotDisturbState"
+    private static let followKey = "middleFollowsDoNotDisturb"
+    private static let middleKey = "middleSectionExpanded"
     private let inventory = AccessibilityMenuBarInventory()
     private let visibility = NativeVisibilityBridge()
     private let systemItems = Array(0..<64)
     private let moon = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let arrow = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-    private var sections = SectionVisibility(doNotDisturb: UserDefaults.standard.object(forKey: focusKey) as? Bool)
+    private var sections = SectionVisibility(
+        doNotDisturb: UserDefaults.standard.object(forKey: focusKey) as? Bool,
+        followsDoNotDisturb: UserDefaults.standard.bool(forKey: followKey),
+        savedMiddleExpanded: UserDefaults.standard.object(forKey: middleKey) as? Bool)
     private var layout: MenuBarLayout?
     private var lastCompleteLayout: MenuBarLayout?
     private var assertion: NativeVisibilityAssertion?
@@ -33,10 +38,10 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     private var dragMonitors: [Any] = []
     private var dragOrigin: CGPoint?
     private var restrictedBundles = Set<String>()
+    private var middleIsHidden = false
     private var needsMeasurement = false
     private var focusCommand: Process?
     private var focusCommandError: String?
-    private static let toggleShortcut = "Hidden Bar Focus – Toggle Do Not Disturb"
 
     static func main() {
         let app = NSApplication.shared
@@ -133,10 +138,12 @@ final class FocusBar: NSObject, NSApplicationDelegate {
               let url = URL(string: text), let active = SectionVisibility.focusEvent(from: url) else { return }
         sections.applyFocusEvent(active)
         UserDefaults.standard.set(active, forKey: Self.focusKey)
+        guard sections.followsDoNotDisturb else { return renderControls() }
         applyVisibility()
     }
 
     @objc private func toggleLeft(_ button: NSStatusBarButton) {
+        guard !isIncompleteClick else { return }
         if isContextClick { return showMenu(from: button) }
         // A failed restriction leaves the icons visible, so retry hiding them.
         sections.leftExpanded = failure == nil ? !sections.leftExpanded : false
@@ -147,13 +154,15 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleMiddle(_ button: NSStatusBarButton) {
+        guard !isIncompleteClick else { return }
         if isContextClick { return showMenu(from: button) }
-        sections.toggleMiddle()
+        sections.toggleMiddle(afterFailedHide: failure != nil && !middleIsHidden)
         applyVisibility(deferManualHide: !sections.middleExpanded)
+        if !sections.middleExpanded && !inventory.isAuthorized { openAccessibility() }
     }
 
     private func renderControls() {
-        let middleAction = sections.middleExpanded ? "Hide middle section" : "Show middle section"
+        let middleAction = middleIsHidden ? "Show middle section" : "Hide middle section"
         let focus: String
         switch sections.doNotDisturb {
         case .some(true): focus = "Do Not Disturb on"
@@ -161,7 +170,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         case .none: focus = "Do Not Disturb not synced"
         }
         let moonLabel = "\(focus) · \(middleAction)"
-        moon.button?.image = NSImage(systemSymbolName: sections.doNotDisturb == true ? "moon.fill" : "moon",
+        moon.button?.image = NSImage(systemSymbolName: middleIsHidden ? "moon.fill" : "moon",
                                      accessibilityDescription: moonLabel)
         moon.button?.setAccessibilityLabel(moonLabel)
         moon.button?.toolTip = moonLabel
@@ -170,6 +179,17 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     private var isContextClick: Bool {
         guard let event = NSApp.currentEvent else { return false }
         return event.type == .rightMouseUp || (event.type == .leftMouseUp && event.modifierFlags.contains(.control))
+    }
+
+    // AppKit can dispatch press and drag phases for a status item. Toggle only
+    // on release, and keep an accessibility press (which has no mouse event).
+    private var isIncompleteClick: Bool {
+        guard let event = NSApp.currentEvent else { return false }
+        switch event.type {
+        case .leftMouseDown, .rightMouseDown, .leftMouseDragged, .rightMouseDragged: return true
+        case .leftMouseUp: return event.modifierFlags.contains(.command)
+        default: return false
+        }
     }
 
     private func renderLeftControl(hidden: Bool) {
@@ -185,9 +205,16 @@ final class FocusBar: NSObject, NSApplicationDelegate {
             if let focusCommandError {
                 menu.addItem(withTitle: focusCommandError, action: nil, keyEquivalent: "")
             }
-            let toggle = menu.addItem(withTitle: "Toggle Do Not Disturb", action: #selector(toggleDoNotDisturb), keyEquivalent: "")
-            toggle.target = self
-            toggle.state = sections.doNotDisturb == true ? .on : .off
+            let targets = sections.doNotDisturb.map { [!$0] } ?? [true, false]
+            for enabled in targets {
+                let title = enabled ? "Turn Do Not Disturb On" : "Turn Do Not Disturb Off"
+                let command = menu.addItem(withTitle: title, action: #selector(setDoNotDisturb(_:)), keyEquivalent: "")
+                command.target = self
+                command.representedObject = "Hidden Bar Focus – " + title
+            }
+            let follow = menu.addItem(withTitle: "Follow Do Not Disturb", action: #selector(toggleFollow), keyEquivalent: "")
+            follow.target = self
+            follow.state = sections.followsDoNotDisturb ? .on : .off
             menu.addItem(.separator())
         }
         if let notice = failure ?? arrangementNotice(for: button) {
@@ -206,18 +233,24 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         menu.popUp(positioning: nil, at: .zero, in: button)
     }
 
-    @objc private func toggleDoNotDisturb() {
-        guard focusCommand == nil else { return }
+    @objc private func toggleFollow() {
+        sections.setFollowsDoNotDisturb(!sections.followsDoNotDisturb)
+        UserDefaults.standard.set(sections.followsDoNotDisturb, forKey: Self.followKey)
+        applyVisibility()
+    }
+
+    @objc private func setDoNotDisturb(_ sender: NSMenuItem) {
+        guard focusCommand == nil, let shortcut = sender.representedObject as? String else { return }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
-        process.arguments = ["run", Self.toggleShortcut]
+        process.arguments = ["run", shortcut]
         process.standardInput = FileHandle.nullDevice
         focusCommandError = nil
         focusCommand = process
         process.terminationHandler = { [weak self] task in
             DispatchQueue.main.async {
                 self?.focusCommand = nil
-                if task.terminationStatus != 0 { self?.focusCommandError = "Check the Toggle Do Not Disturb shortcut in Shortcuts." }
+                if task.terminationStatus != 0 { self?.focusCommandError = "Check “\(shortcut)” in Shortcuts." }
             }
         }
         do { try process.run() } catch {
@@ -250,6 +283,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     }
 
     private func applyVisibility(deferManualHide: Bool = false) {
+        UserDefaults.standard.set(sections.middleExpanded, forKey: Self.middleKey)
         revision += 1
         let request = revision
         renderControls()
@@ -260,7 +294,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
             assertion = nil
             restrictedBundles.removeAll()
             layout = nil
-            renderLeftControl(hidden: false)
+            renderAppliedSections(leftHidden: false, middleHidden: false)
             return
         }
 
@@ -345,7 +379,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
                 self.assertion = newAssertion
                 self.restrictedBundles = Set(layout.sections.keys).subtracting(allowed)
                 previous?.invalidate()
-                self.renderLeftControl(hidden: !shown.contains(.alwaysHidden))
+                self.renderAppliedSections(leftHidden: !shown.contains(.alwaysHidden), middleHidden: !shown.contains(.hidden))
                 NSLog("Hidden Bar Focus: applied sections left=%d middle=%d hiddenApps=%d", self.sections.leftExpanded, self.sections.middleExpanded, self.restrictedBundles.count)
             case .failure(let error):
                 NSLog("Hidden Bar Focus: %@", error.localizedDescription)
@@ -366,6 +400,12 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         restrictedBundles.removeAll()
         layout = nil
         failure = reason
-        renderLeftControl(hidden: false)
+        renderAppliedSections(leftHidden: false, middleHidden: false)
+    }
+
+    private func renderAppliedSections(leftHidden: Bool, middleHidden: Bool) {
+        middleIsHidden = middleHidden
+        renderLeftControl(hidden: leftHidden)
+        renderControls()
     }
 }

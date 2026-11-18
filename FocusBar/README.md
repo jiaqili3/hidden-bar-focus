@@ -5,17 +5,17 @@ Hidden Bar Focus is a personal macOS 27 menu bar app built on the MIT-licensed H
 | Position | Control |
 | --- | --- |
 | Left of the arrow | Click the arrow to show or hide the left section. It shows `<` while hidden and `>` while visible. |
-| Between the arrow and the moon | Click the moon to show or hide the middle section. Do Not Disturb hides it when enabled and shows it when disabled. A manual click lasts until the next Do Not Disturb transition. |
+| Between the arrow and the moon | Click the moon to show or hide the middle section. Enable **Follow Do Not Disturb** to hide these icons when Focus turns on and show them when it turns off. |
 | Right of the moon | Icons stay visible. |
 
-The moon is filled when Do Not Disturb is on and outlined when it is off. Left-click it to change middle-section visibility. Right-click it and choose **Toggle Do Not Disturb** to change the Mac’s Focus setting.
+The moon is filled when the middle section is hidden and outlined when it is visible. Left-click it to change middle-section visibility. Right-click it and choose **Turn Do Not Disturb On** or **Turn Do Not Disturb Off** to change the Mac’s Focus setting. **Follow Do Not Disturb** is off by default. The app remembers your choice and manual visibility across restarts. Enabling Follow immediately matches the current Do Not Disturb state.
 
 ## Build and set up
 
 1. On macOS 27 with the Command Line Tools installed, run `FocusBar/build.sh /path/to/build-output` from the repository. Copy **Hidden Bar Focus.app** to **Applications**.
 2. Quit the original Hidden Bar if it is running, then open **Hidden Bar Focus** from Applications. Right-click either control and choose **Open Accessibility Settings…**, then enable the app in **Privacy & Security → Accessibility**.
 3. Hold **Command** while dragging a visible icon across a control. The app rereads the arrangement when the drag ends and on each manual hide. To move a hidden icon, right-click either control and choose **Show All to Arrange Icons** first. Put the arrow left of the moon.
-4. Create two shortcuts with **Open URLs**, one for `hiddenbar-focus://dnd/on` and one for `hiddenbar-focus://dnd/off`. In each shortcut editor, select **Automation** and add **Do Not Disturb**. Set the event to **Is Turned On** or **Is Turned Off** to match the URL and enable the automation. Create a third shortcut named **Hidden Bar Focus – Toggle Do Not Disturb** with the **Set Focus** action configured to **Toggle Do Not Disturb**. The app stores the last event it receives.
+4. Create two shortcuts with **Open URLs**, one for `hiddenbar-focus://dnd/on` and one for `hiddenbar-focus://dnd/off`. In each shortcut editor, select **Automation** and add **Do Not Disturb**. Set the event to **Is Turned On** or **Is Turned Off** to match the URL and enable the automation. Create **Hidden Bar Focus – Turn Do Not Disturb On** and **Hidden Bar Focus – Turn Do Not Disturb Off**, each with a **Set Focus** action that explicitly sets Do Not Disturb to the named state. The app stores the last event it receives.
 5. In **System Settings → Menu Bar → Focus**, choose **Don't Show in Menu Bar** to remove the separate macOS Focus moon. Do Not Disturb remains available in Control Center.
 
 If the arrow has no visible effect, right-click it after a hide attempt. If the menu reports that the left section is empty, choose **Show All to Arrange Icons**, Command-drag an app icon to the left of the arrow, then click the arrow to hide it.

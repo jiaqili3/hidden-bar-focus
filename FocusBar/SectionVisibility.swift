@@ -4,19 +4,26 @@ struct SectionVisibility {
     var leftExpanded = false
     private(set) var middleExpanded: Bool
     private(set) var doNotDisturb: Bool?
+    private(set) var followsDoNotDisturb: Bool
 
-    init(doNotDisturb: Bool?) {
+    init(doNotDisturb: Bool?, followsDoNotDisturb: Bool = false, savedMiddleExpanded: Bool? = nil) {
         self.doNotDisturb = doNotDisturb
-        self.middleExpanded = doNotDisturb != true
+        self.followsDoNotDisturb = followsDoNotDisturb
+        self.middleExpanded = followsDoNotDisturb ? doNotDisturb != true : savedMiddleExpanded ?? true
     }
 
-    mutating func toggleMiddle() {
-        middleExpanded.toggle()
+    mutating func toggleMiddle(afterFailedHide: Bool = false) {
+        middleExpanded = afterFailedHide ? false : !middleExpanded
     }
 
     mutating func applyFocusEvent(_ active: Bool) {
         doNotDisturb = active
-        middleExpanded = !active
+        if followsDoNotDisturb { middleExpanded = !active }
+    }
+
+    mutating func setFollowsDoNotDisturb(_ enabled: Bool) {
+        followsDoNotDisturb = enabled
+        if enabled, let doNotDisturb { middleExpanded = !doNotDisturb }
     }
 
     mutating func revealForArrangement() {

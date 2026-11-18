@@ -4,7 +4,7 @@ func require(_ condition: @autoclosure () -> Bool, _ detail: String) {
     guard condition() else { fatalError(detail) }
 }
 
-var state = SectionVisibility(doNotDisturb: nil)
+var state = SectionVisibility(doNotDisturb: nil, followsDoNotDisturb: true)
 require(state.shownSections == [.visible, .hidden], "Only the middle and right start visible")
 state.applyFocusEvent(true)
 require(state.shownSections == [.visible], "Do Not Disturb hides the middle")
@@ -27,8 +27,23 @@ require(state.shownSections == [.visible], "The next Do Not Disturb transition o
 state.revealForArrangement()
 require(state.showsAll && state.doNotDisturb == true, "Arranging icons reveals both sections without changing Do Not Disturb")
 
-let restarted = SectionVisibility(doNotDisturb: true)
+let restarted = SectionVisibility(doNotDisturb: true, followsDoNotDisturb: true)
 require(restarted.shownSections == [.visible], "Restart restores the last Do Not Disturb state")
+
+var manual = SectionVisibility(doNotDisturb: true)
+require(manual.middleExpanded && !manual.followsDoNotDisturb, "A new installation starts detached even when DND is on")
+manual.toggleMiddle()
+manual.applyFocusEvent(false)
+require(!manual.middleExpanded && manual.doNotDisturb == false, "An off event updates the moon without expanding")
+manual.toggleMiddle()
+manual.applyFocusEvent(true)
+require(manual.middleExpanded && manual.doNotDisturb == true, "An on event updates the moon without hiding")
+let restoredManual = SectionVisibility(doNotDisturb: true, followsDoNotDisturb: false, savedMiddleExpanded: true)
+require(restoredManual.middleExpanded && !restoredManual.followsDoNotDisturb, "Manual visibility survives restart")
+manual.setFollowsDoNotDisturb(true)
+require(!manual.middleExpanded, "Enabling follow immediately adopts the current Focus state")
+manual.applyFocusEvent(false)
+require(manual.middleExpanded, "Automatic expansion resumes")
 
 let layout = MenuBarLayoutResolver.resolve(
     inventory: [
@@ -39,7 +54,7 @@ let layout = MenuBarLayoutResolver.resolve(
     separatorFrame: CGRect(x: 90, y: 0, width: 10, height: 20),
     alwaysHiddenSeparatorFrame: CGRect(x: 40, y: 0, width: 10, height: 20),
     isLTR: true, excludingBundle: nil)
-var controls = SectionVisibility(doNotDisturb: false)
+var controls = SectionVisibility(doNotDisturb: false, followsDoNotDisturb: true)
 controls.revealForArrangement()
 controls.leftExpanded.toggle()
 require(layout.bundles(in: controls.shownSections) == ["local.test.middle", "local.test.right"],
