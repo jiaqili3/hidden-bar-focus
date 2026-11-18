@@ -93,7 +93,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     @objc private func toggleLeft(_ button: NSStatusBarButton) {
         guard NSApp.currentEvent?.type != .rightMouseUp else { return showMenu(from: button) }
         sections.leftExpanded.toggle()
-        applyVisibility()
+        applyVisibility(deferManualHide: !sections.leftExpanded)
         if !sections.leftExpanded && !inventory.isAuthorized {
             openAccessibility()
         }
@@ -102,7 +102,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     @objc private func toggleMiddle(_ button: NSStatusBarButton) {
         guard NSApp.currentEvent?.type != .rightMouseUp else { return showMenu(from: button) }
         sections.toggleMiddle()
-        applyVisibility()
+        applyVisibility(deferManualHide: !sections.middleExpanded)
     }
 
     private func renderControls() {
@@ -164,7 +164,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func applyVisibility() {
+    private func applyVisibility(deferManualHide: Bool = false) {
         revision += 1
         let request = revision
         renderControls()
@@ -188,7 +188,20 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         }
         guard let ownBundle = Bundle.main.bundleIdentifier else { return }
 
-        if let layout, assertion != nil {
+        if deferManualHide {
+            // A quick second click can cancel the hide before macOS starts applying it.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.restrictVisibility(ownBundle: ownBundle, request: request)
+            }
+        } else {
+            restrictVisibility(ownBundle: ownBundle, request: request)
+        }
+    }
+
+    private func restrictVisibility(ownBundle: String, request: Int) {
+        guard revision == request else { return }
+        // A show request can reuse the measured arrangement while a hide is still applying.
+        if let layout {
             activate(layout: layout, ownBundle: ownBundle, request: request)
             return
         }
