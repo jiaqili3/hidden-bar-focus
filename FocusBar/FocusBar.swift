@@ -85,7 +85,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     @objc private func receiveURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let text = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue,
               let url = URL(string: text), let active = SectionVisibility.focusEvent(from: url) else { return }
-        sections.setDoNotDisturb(active)
+        sections.applyFocusEvent(active)
         UserDefaults.standard.set(active, forKey: Self.focusKey)
         applyVisibility()
     }
@@ -94,6 +94,9 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         guard NSApp.currentEvent?.type != .rightMouseUp else { return showMenu(from: button) }
         sections.leftExpanded.toggle()
         applyVisibility()
+        if !sections.leftExpanded && !inventory.isAuthorized {
+            openAccessibility()
+        }
     }
 
     @objc private func toggleMiddle(_ button: NSStatusBarButton) {
@@ -122,8 +125,8 @@ final class FocusBar: NSObject, NSApplicationDelegate {
 
     private func showMenu(from button: NSStatusBarButton) {
         let menu = NSMenu()
-        if let failure {
-            menu.addItem(withTitle: failure, action: nil, keyEquivalent: "").isEnabled = false
+        if let notice = failure ?? arrangementNotice(for: button) {
+            menu.addItem(withTitle: notice, action: nil, keyEquivalent: "").isEnabled = false
             menu.addItem(.separator())
         }
         let arrange = menu.addItem(withTitle: "Show All to Arrange Icons", action: #selector(arrangeIcons), keyEquivalent: "")
@@ -136,6 +139,17 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Hidden Bar Focus", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.popUp(positioning: nil, at: .zero, in: button)
+    }
+
+    private func arrangementNotice(for button: NSStatusBarButton) -> String? {
+        guard let measured = layout ?? lastCompleteLayout else { return nil }
+        if button === arrow.button && measured.bundles(in: [.alwaysHidden]).isEmpty {
+            return "No app icons to the left of >"
+        }
+        if button === moon.button && measured.bundles(in: [.hidden]).isEmpty {
+            return "No app icons between > and the moon"
+        }
+        return nil
     }
 
     @objc private func arrangeIcons() {

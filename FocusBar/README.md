@@ -18,6 +18,8 @@ The moon is filled when Do Not Disturb is on and outlined when it is off. Clicki
 4. In **Shortcuts → Automation**, add two **Do Not Disturb** triggers set to **Run Immediately**. For **When Turning On**, add **Open URLs** with `hiddenbar-focus://dnd/on`. For **When Turning Off**, use `hiddenbar-focus://dnd/off`. Toggle Do Not Disturb once to initialize the moon. The app stores the last event it receives.
 5. In **System Settings → Menu Bar → Focus**, choose **Don't Show in Menu Bar** to remove the separate macOS Focus moon. Do Not Disturb remains available in Control Center.
 
+If `>` has no visible effect, right-click it after a hide attempt. If the menu reports that the left section is empty, choose **Show All to Arrange Icons**, Command-drag an app icon to the left of `>`, then click `>` to hide it.
+
 Apple's hiding mechanism works per app, so multiple icons from one app share a section. macOS keeps its own protected controls and controls menu bar overflow. The app releases its visibility restriction when it quits, when a change fails, or when both sections are shown. The local build is ad hoc signed. Set `FOCUSBAR_SIGNING_IDENTITY` to use a local certificate.
 
 ## Test the state logic

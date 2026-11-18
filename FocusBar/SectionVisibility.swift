@@ -14,8 +14,7 @@ struct SectionVisibility {
         middleExpanded.toggle()
     }
 
-    mutating func setDoNotDisturb(_ active: Bool) {
-        guard doNotDisturb != active else { return }
+    mutating func applyFocusEvent(_ active: Bool) {
         doNotDisturb = active
         middleExpanded = !active
     }
