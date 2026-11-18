@@ -110,7 +110,7 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
                            let app = apps[index]
                            guard app.bundleIdentifier != nil else { return [] }
                            return [MenuBarInventoryItem(bundleIdentifier: app.bundleIdentifier, frame: .zero,
-                                                        isUnreadable: true, ownerName: app.name,
+                                                        isUnreadable: true, isUnconfirmedOwner: true, ownerName: app.name,
                                                         runsOutsideApplicationsFolder: app.runsOutsideApplicationsFolder)]
                        })
     }

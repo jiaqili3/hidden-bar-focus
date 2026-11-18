@@ -47,6 +47,12 @@ class StatusBarController: MenuBarItemProvider {
     }
     
     private var isToggle = false
+    #if HIDDENBAR_FOCUS
+    private var restoringFocusLayout = true
+    private var pendingFocusHide: DispatchWorkItem?
+    private var focusCommand: Process?
+    private var focusCommandError: String?
+    #endif
 
     #if HIDDENBAR_NATIVE_VISIBILITY
     // Presentation mode (macOS 27, direct build): the capsule, the manual switch
@@ -268,7 +274,17 @@ class StatusBarController: MenuBarItemProvider {
         // the items are placed, so the first collapse already holds the strict list.
         presentationController?.syncMirror()
         #endif
+        #if HIDDENBAR_FOCUS
+        let d = AppDefaults.store
+        let follow = d.bool(forKey: FocusBar.followKey)
+        let sections = SectionVisibility(doNotDisturb: d.object(forKey: FocusBar.focusKey) as? Bool,
+                                         followsDoNotDisturb: follow,
+                                         savedMiddleExpanded: d.object(forKey: FocusBar.middleKey) as? Bool)
+        restoringFocusLayout = false
+        setFocusMiddle(expanded: sections.middleExpanded)
+        #else
         collapseMenuBar()
+        #endif
     }
 
     // macOS 27: Preferences shows the missing permission, and a grant hides at
@@ -278,7 +294,11 @@ class StatusBarController: MenuBarItemProvider {
         permission.onChange = {
             NotificationCenter.default.post(name: .accessibilityPermissionChanged, object: nil)
         }
+        #if HIDDENBAR_FOCUS
+        permission.onRestored = { [weak self] in self?.collapseAtLaunch(retriesLeft: 0) }
+        #else
         permission.onRestored = { [weak self] in self?.collapseMenuBar() }
+        #endif
     }
 
     private func setupUI() {
@@ -300,7 +320,12 @@ class StatusBarController: MenuBarItemProvider {
         // macOS persists an autosaved item's position and visibility in the app's
         // preferences domain, so a test host leaves its items unnamed.
         if AppDefaults.allowsHostSideEffects {
+            #if HIDDENBAR_FOCUS
+            btnExpandCollapse.autosaveName = "focusbar_moon"
+            configureFocusButton(btnExpandCollapse, action: #selector(focusMoonClicked(_:)))
+            #else
             btnExpandCollapse.autosaveName = "hiddenbar_expandcollapse";
+            #endif
             btnSeparate.autosaveName = "hiddenbar_separate";
         }
     }
@@ -368,6 +393,9 @@ class StatusBarController: MenuBarItemProvider {
     // on-screen space, growing downward from below the button.
     private func showContextMenu(from button: NSStatusBarButton) {
         let menu = getContextMenu()
+        #if HIDDENBAR_FOCUS
+        if button === btnExpandCollapse.button { addFocusCommands(to: menu) }
+        #endif
         isShowingOwnMenu = true
         defer { isShowingOwnMenu = false }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: 0), in: button)
@@ -403,6 +431,9 @@ class StatusBarController: MenuBarItemProvider {
     }
     
     func expandCollapseIfNeeded(fullBarOnce: Bool = false) {
+        #if HIDDENBAR_FOCUS
+        setFocusMiddle(expanded: pendingFocusHide != nil || isCollapsed || menuBarEngine.state == .calibrating)
+        #else
         //prevented rapid click cause icon show many in Dock
         if isToggle {return}
         isToggle = true
@@ -417,6 +448,7 @@ class StatusBarController: MenuBarItemProvider {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.isToggle = false
         }
+        #endif
     }
     
     private func collapseMenuBar(userInitiated: Bool = false) {
@@ -424,6 +456,9 @@ class StatusBarController: MenuBarItemProvider {
             autoCollapseIfNeeded()
             return
         }
+        #if HIDDENBAR_FOCUS
+        (menuBarEngine as? NativeVisibilityEngine)?.needsFocusMeasurement = true
+        #endif
         if !Preferences.areSeparatorsHidden
             && menuBarEngine.separatorsHiddenForCollapse(current: Preferences.areSeparatorsHidden) {
             hideSeparators()
@@ -451,6 +486,9 @@ class StatusBarController: MenuBarItemProvider {
     }
 
     private func didFailToCollapseMenuBar() {
+        #if HIDDENBAR_FOCUS
+        defer { refreshFocusButtons() }
+        #endif
         if let button = btnExpandCollapse.button {
             button.image = Assets.collapseImage
         }
@@ -466,10 +504,18 @@ class StatusBarController: MenuBarItemProvider {
 
     // Applies a stealth or arrow-style change to an arrow that is already on screen.
     @objc private func refreshArrow() {
+        #if HIDDENBAR_FOCUS
+        refreshFocusButtons()
+        #else
         btnExpandCollapse.button?.image = isCollapsed ? collapsedArrowImage : Assets.collapseImage
+        #endif
     }
 
     private func didCollapseMenuBar(userInitiated: Bool) {
+        #if HIDDENBAR_FOCUS
+        if !restoringFocusLayout { AppDefaults.store.set(false, forKey: FocusBar.middleKey) }
+        defer { refreshFocusButtons() }
+        #endif
         if let button = btnExpandCollapse.button {
             button.image = collapsedArrowImage
         }
@@ -488,7 +534,13 @@ class StatusBarController: MenuBarItemProvider {
     }
 
     private func expandMenubar(activatingApp: Bool = true, userInitiated: Bool = false) {
+        #if HIDDENBAR_FOCUS
+        defer { refreshFocusButtons() }
+        #endif
         guard self.isCollapsed else {return}
+        #if HIDDENBAR_FOCUS
+        if !restoringFocusLayout { AppDefaults.store.set(true, forKey: FocusBar.middleKey) }
+        #endif
         #if HIDDENBAR_NATIVE_VISIBILITY
         // Read before the engine expands: it is what the bar hid until now.
         let hiddenBundles = userInitiated ? menuBarEngine.hiddenSectionBundles : []
@@ -763,16 +815,29 @@ extension StatusBarController {
                 button.appearsDisabled = true
             }
             if AppDefaults.allowsHostSideEffects {
+                #if HIDDENBAR_FOCUS
+                self.btnAlwaysHidden?.autosaveName = "focusbar_left"
+                if let arrow = self.btnAlwaysHidden { configureFocusButton(arrow, action: #selector(focusLeftClicked(_:))) }
+                #else
                 self.btnAlwaysHidden?.autosaveName = "hiddenbar_terminate"
+                #endif
             }
             self.btnAlwaysHidden?.isVisible = true
             // Last, so the engine decides whether the new item stays in the bar.
+            #if HIDDENBAR_FOCUS
+            menuBarEngine.updateAlwaysHiddenSection(enabled: true, separatorHidden: Preferences.areSeparatorsHidden)
+            refreshFocusButtons()
+            #else
             menuBarEngine.updateAlwaysHiddenSection(enabled: true, separatorHidden: false)
+            #endif
         } else {
             if let existing = self.btnAlwaysHidden {
                 NSStatusBar.system.removeStatusItem(existing)
             }
             self.btnAlwaysHidden = nil
+            #if HIDDENBAR_FOCUS
+            menuBarEngine.updateAlwaysHiddenSection(enabled: false, separatorHidden: false)
+            #endif
         }
     }
 }
@@ -1111,6 +1176,149 @@ extension StatusBarController {
         #else
         return [:]
         #endif
+    }
+}
+#endif
+
+#if HIDDENBAR_FOCUS
+extension StatusBarController {
+    private func configureFocusButton(_ item: NSStatusItem, action: Selector) {
+        guard let button = item.button else { return }
+        item.length = NSStatusItem.squareLength
+        button.appearsDisabled = false
+        button.target = self
+        button.action = action
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        button.setAccessibilityCustomActions([NSAccessibilityCustomAction(name: "Show Menu") { [weak self, weak button] in
+            guard let self, let button else { return false }
+            DispatchQueue.main.async { self.showContextMenu(from: button) }
+            return true
+        }])
+    }
+
+    private func handlesFocusClick(_ button: NSStatusBarButton) -> Bool {
+        guard let event = NSApp.currentEvent else { return true }
+        switch event.type {
+        case .rightMouseUp:
+            showContextMenu(from: button)
+            return false
+        case .leftMouseDown, .rightMouseDown, .leftMouseDragged, .rightMouseDragged: return false
+        case .leftMouseUp where event.modifierFlags.contains(.control):
+            showContextMenu(from: button)
+            return false
+        case .leftMouseUp where event.modifierFlags.contains(.command): return false
+        default: return true
+        }
+    }
+
+    @objc private func focusMoonClicked(_ button: NSStatusBarButton) {
+        guard handlesFocusClick(button) else { return }
+        expandCollapseIfNeeded()
+    }
+
+    @objc private func focusLeftClicked(_ button: NSStatusBarButton) {
+        guard handlesFocusClick(button) else { return }
+        Preferences.areSeparatorsHidden.toggle()
+        menuBarEngine.updateAlwaysHiddenSection(enabled: Preferences.alwaysHiddenSectionEnabled,
+                                               separatorHidden: Preferences.areSeparatorsHidden)
+        focusArrangementChanged()
+        refreshFocusButtons()
+    }
+
+    func setFocusMiddle(expanded: Bool) {
+        pendingFocusHide?.cancel()
+        pendingFocusHide = nil
+        menuBarEngine.userChangedBar()
+        if expanded {
+            if !restoringFocusLayout { AppDefaults.store.set(true, forKey: FocusBar.middleKey) }
+            if isCollapsed { expandMenubar(activatingApp: false, userInitiated: true) }
+            else { menuBarEngine.expand(); refreshFocusButtons() }
+        } else if !isCollapsed {
+            let work = DispatchWorkItem { [weak self] in
+                self?.pendingFocusHide = nil
+                self?.collapseMenuBar(userInitiated: true)
+            }
+            pendingFocusHide = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: work)
+        }
+    }
+
+    func refreshFocusButtons() {
+        let hidden = isCollapsed
+        let d = AppDefaults.store
+        let state = d.object(forKey: FocusBar.focusKey) as? Bool
+        let focus = state.map { $0 ? "Do Not Disturb on" : "Do Not Disturb off" } ?? "Do Not Disturb not synced"
+        let label = focus + (hidden ? " · Show middle section" : " · Hide middle section")
+        let moon = btnExpandCollapse.button
+        moon?.image = NSImage(systemSymbolName: hidden ? "moon.fill" : "moon", accessibilityDescription: label)
+        moon?.setAccessibilityLabel(label)
+        moon?.toolTip = label
+        let leftHidden = Preferences.areSeparatorsHidden
+        let arrow = btnAlwaysHidden?.button
+        if Preferences.arrowStyle == .arrow {
+            arrow?.image = nil
+            arrow?.font = .monospacedSystemFont(ofSize: 15, weight: .medium)
+            arrow?.title = leftHidden ? "<" : ">"
+        } else {
+            arrow?.title = ""
+            arrow?.image = leftHidden ? Preferences.arrowStyle.expandImage() : Preferences.arrowStyle.collapseImage()
+        }
+        arrow?.alphaValue = leftHidden && Preferences.stealthExpandIconEnabled ? 0.15 : 1
+        let action = leftHidden ? "Show left section" : "Hide left section"
+        arrow?.setAccessibilityLabel(action)
+        arrow?.toolTip = action
+    }
+
+    func focusArrangementChanged() {
+        (menuBarEngine as? NativeVisibilityEngine)?.focusVisibilityChanged(remeasure: true)
+    }
+
+    func focusIconPreferencesChanged() {
+        (menuBarEngine as? NativeVisibilityEngine)?.focusVisibilityChanged(remeasure: false)
+    }
+
+    private func addFocusCommands(to menu: NSMenu) {
+        let d = AppDefaults.store
+        let follow = NSMenuItem(title: "Follow Do Not Disturb", action: #selector(changeFocusFollow), keyEquivalent: "")
+        follow.target = self
+        follow.state = d.bool(forKey: FocusBar.followKey) ? .on : .off
+        menu.insertItem(.separator(), at: 0)
+        menu.insertItem(follow, at: 0)
+        for desired in (d.object(forKey: FocusBar.focusKey) as? Bool).map({ [!$0] }) ?? [true, false] {
+            let title = desired ? "Turn Do Not Disturb On" : "Turn Do Not Disturb Off"
+            let command = NSMenuItem(title: title, action: #selector(changeFocus(_:)), keyEquivalent: "")
+            command.target = self
+            menu.insertItem(command, at: 0)
+        }
+        if let focusCommandError { menu.insertItem(withTitle: focusCommandError, action: nil, keyEquivalent: "", at: 0) }
+    }
+
+    @objc private func changeFocusFollow() {
+        let d = AppDefaults.store
+        let follow = !d.bool(forKey: FocusBar.followKey)
+        d.set(follow, forKey: FocusBar.followKey)
+        if follow, let active = d.object(forKey: FocusBar.focusKey) as? Bool { setFocusMiddle(expanded: !active) }
+    }
+
+    @objc private func changeFocus(_ sender: NSMenuItem) {
+        guard focusCommand == nil else { return }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
+        let shortcut = "Hidden Bar Focus – " + sender.title
+        process.arguments = ["run", shortcut]
+        process.standardInput = FileHandle.nullDevice
+        focusCommand = process
+        focusCommandError = nil
+        process.terminationHandler = { [weak self] task in
+            DispatchQueue.main.async {
+                self?.focusCommand = nil
+                if task.terminationStatus != 0 { self?.focusCommandError = "Check “\(shortcut)” in Shortcuts." }
+            }
+        }
+        do { try process.run() } catch {
+            focusCommand = nil
+            focusCommandError = "Could not start Shortcuts."
+        }
     }
 }
 #endif

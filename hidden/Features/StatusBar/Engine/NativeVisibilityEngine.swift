@@ -333,6 +333,9 @@ final class NativeVisibilityEngine: MenuBarEngine {
         alwaysHiddenSeparatorHidden = separatorHidden
         switch state {
         case .collapsed:
+            #if HIDDENBAR_FOCUS
+            reconcileHold(superseding: true)
+            #endif
             // A separator created while collapsed arrives visible.
             setSeparatorsVisible(false)
         case .expanded:
@@ -353,7 +356,11 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // Pinned sections hide the always-hidden section again at every collapse,
     // so an expand never shows it unless Option-click revealed it since (#224).
     func separatorsHiddenForCollapse(current: Bool) -> Bool {
+        #if HIDDENBAR_FOCUS
+        return current
+        #else
         return pinsSections() ? true : current
+        #endif
     }
 
     // Where macOS 27 knows an app by its bundle id: /Applications (and folders
@@ -388,7 +395,12 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // to revealing then; the strict list needs none.
     private func applyExpandedPresentation() {
         let presenting = holdsPresentationList
-        guard hidesAlwaysHiddenSection || presenting, visibility.isAvailable, runsFromApplicationsFolder() else {
+        #if HIDDENBAR_FOCUS
+        let perAppRestriction = !IconSettings.shared.disabled.isEmpty
+        #else
+        let perAppRestriction = false
+        #endif
+        guard hidesAlwaysHiddenSection || presenting || perAppRestriction, visibility.isAvailable, runsFromApplicationsFolder() else {
             return revealAll()
         }
         guard inventory.isAuthorized else {
@@ -420,9 +432,13 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // unrestricted bar; while a restriction is active the cached ones stand in.
     // Superseded by any later expand or activation, like an activation is.
     private func withLayout(_ body: @escaping (MenuBarLayout?) -> Void) {
-        if assertion != nil {
-            return body(layout)
-        }
+        #if HIDDENBAR_FOCUS
+        let refreshingVisible = needsFocusMeasurement
+        needsFocusMeasurement = false
+        #else
+        let refreshingVisible = false
+        #endif
+        if assertion != nil && !refreshingVisible { return body(layout) }
         guard let arrow = items?.toggleItem,
               var boundary = itemFrame(arrow) else { return body(nil) }
         var alwaysHiddenFrame = alwaysHiddenEnabled ? items?.alwaysHiddenItem.flatMap(itemFrame) : nil
@@ -447,12 +463,23 @@ final class NativeVisibilityEngine: MenuBarEngine {
                 NSLog("NativeVisibility: the arrow at \(NSStringFromRect(boundary)) is on no display \(displays.map { NSStringFromRect($0.appKitFrame) })")
                 return body(nil)
             }
-            var layout = MenuBarLayoutResolver.resolve(inventory: inventory,
+            var readable = inventory
+            #if HIDDENBAR_FOCUS
+            IconSettings.shared.observe(inventory)
+            if self.assertion != nil {
+                let visible = Set(self.assertionBundles)
+                readable = inventory.filter { $0.bundleIdentifier.map(visible.contains) ?? true }
+            }
+            #endif
+            var layout = MenuBarLayoutResolver.resolve(inventory: readable,
                                                        separatorFrame: boundary,
                                                        alwaysHiddenSeparatorFrame: alwaysHiddenFrame,
                                                        displays: displays,
                                                        isLTR: isLTR,
                                                        excludingBundle: self.ownBundleIdentifier)
+            #if HIDDENBAR_FOCUS
+            if self.assertion != nil, let previous = self.layout { layout = layout.fillingIn(from: previous) }
+            #endif
             if layout.isIncomplete {
                 // Apps macOS left out would be hidden although they may be
                 // right of the arrow; with no complete read to take them from,
@@ -545,7 +572,11 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // hidden; a zero-width item would still be there and clickable.
     private func setSeparatorsVisible(_ visible: Bool) {
         items?.separatorItem.isVisible = false
+        #if HIDDENBAR_FOCUS
+        let shown = alwaysHiddenEnabled
+        #else
         let shown = visible && alwaysHiddenEnabled
+        #endif
         items?.alwaysHiddenItem?.length = shown ? expandedLength : 0
         items?.alwaysHiddenItem?.isVisible = shown
     }
@@ -650,6 +681,9 @@ final class NativeVisibilityEngine: MenuBarEngine {
         })
 
     func allowTemporarily(_ bundle: String, completion: @escaping (PaletteLift) -> Void) {
+        #if HIDDENBAR_FOCUS
+        guard IconSettings.shared.excludedBundles(in: [bundle]).isEmpty else { return completion(.unavailable) }
+        #endif
         // A collapse or an activation in flight would be cancelled by another.
         guard state != .calibrating else { return completion(.unavailable) }
         // Nothing held means nothing is hidden.
@@ -858,6 +892,25 @@ final class NativeVisibilityEngine: MenuBarEngine {
         }
     }
 
+    #if HIDDENBAR_FOCUS
+    var needsFocusMeasurement = false
+
+    func focusVisibilityChanged(remeasure: Bool) {
+        if remeasure { needsFocusMeasurement = true }
+        switch state {
+        case .collapsed where remeasure:
+            withLayout { [weak self] _ in self?.reconcileHold(superseding: true) }
+        case .collapsed:
+            reconcileHold(superseding: true)
+        case .expanded, .unavailable:
+            expand()
+        case .calibrating:
+            // The completing collapse settles against the latest preferences.
+            break
+        }
+    }
+    #endif
+
     func applicationTerminated(_ bundle: String) {
         launchedSinceRead.remove(bundle)
     }
@@ -906,6 +959,21 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // every re-activation (a launch, a presentation starting), unless it is a
     // sensitive app while presenting.
     private func hold(whenBar bar: MenuBarEngineState, layout: MenuBarLayout?) -> NativeHold? {
+        guard let hold = unfilteredHold(whenBar: bar, layout: layout) else { return nil }
+        #if HIDDENBAR_FOCUS
+        var candidates = Set(hold.bundles)
+        if !holdsPresentationList {
+            let running = NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier)
+            candidates.formUnion(running.filter { layout?.sections[$0] == nil && !isSensitiveWhilePresenting($0) })
+        }
+        candidates.subtract(IconSettings.shared.excludedBundles(in: candidates))
+        return NativeHold(systemItems: hold.systemItems, bundles: candidates.sorted())
+        #else
+        return hold
+        #endif
+    }
+
+    private func unfilteredHold(whenBar bar: MenuBarEngineState, layout: MenuBarLayout?) -> NativeHold? {
         guard let base = baseHold(whenBar: bar, layout: layout) else { return nil }
         guard let allowed = temporaryAllow, !isSensitiveWhilePresenting(allowed.bundle),
               !base.bundles.contains(allowed.bundle) else { return base }
@@ -919,9 +987,19 @@ final class NativeVisibilityEngine: MenuBarEngine {
             if presenting {
                 return NativeHold(systemItems: Self.presentationSystemItems, bundles: [])
             }
-            return layout.map { NativeHold(systemItems: Self.systemItemsToKeep, bundles: $0.bundles(in: [.visible])) }
+            #if HIDDENBAR_FOCUS
+            let sections: Set<MenuBarSection> = hidesAlwaysHiddenSection ? [.visible] : [.visible, .alwaysHidden]
+            #else
+            let sections: Set<MenuBarSection> = [.visible]
+            #endif
+            return layout.map { NativeHold(systemItems: Self.systemItemsToKeep, bundles: $0.bundles(in: sections)) }
         case .expanded:
+            #if HIDDENBAR_FOCUS
+            let sections: Set<MenuBarSection> = hidesAlwaysHiddenSection ? [.visible, .hidden] : [.visible, .hidden, .alwaysHidden]
+            let shown = layout?.bundles(in: sections)
+            #else
             let shown = layout?.bundles(in: [.visible, .hidden])
+            #endif
             if presenting {
                 // The sensitive apps stay hidden, also when the user put one in
                 // the visible section.

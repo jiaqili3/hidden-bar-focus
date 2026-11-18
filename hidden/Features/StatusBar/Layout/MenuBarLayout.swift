@@ -33,6 +33,8 @@ struct MenuBarInventoryItem: Equatable {
     var systemIdentifier: String? = nil
     // The owner did not answer Accessibility in time, so the frame is unknown.
     var isUnreadable: Bool = false
+    // A timed-out process may own no item. An actual child with no frame still counts.
+    var isUnconfirmedOwner: Bool = false
     var ownerName: String? = nil
     // Run from outside an Applications folder (iStat Menus 7 runs its menu bar
     // from Application Support, #521) on a macOS that then hides it although

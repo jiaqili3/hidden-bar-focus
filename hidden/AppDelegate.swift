@@ -10,11 +10,13 @@ import AppKit
 import HotKey
 import ServiceManagement
 
+#if !HIDDENBAR_FOCUS
 @NSApplicationMain
+#endif
 
 class AppDelegate: NSObject, NSApplicationDelegate{
     
-    var statusBarController = StatusBarController()
+    lazy var statusBarController = StatusBarController()
 
     /// Every global shortcut; a feature adds its own with `register(key:handler:)`.
     let hotKeys = HotKeyRegistry.shared
@@ -29,6 +31,7 @@ class AppDelegate: NSObject, NSApplicationDelegate{
         AppStoreMigration.shared.captureLaunchState()
         #endif
         guard ensureSingleInstance() else { return }
+        _ = statusBarController
         #if HIDDENBAR_NATIVE_VISIBILITY
         // Pinned sections (beta) fill the Settings tab the native engine has.
         if MenuBarEngineFactory.usesNativeEngine() {

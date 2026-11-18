@@ -124,6 +124,9 @@ final class MenuBarAppsSettingsViewController: SettingsPaneController {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     override func buildForm() {
+        #if HIDDENBAR_FOCUS
+        addFullWidth(IconSettings.shared.settingsView())
+        #endif
         addNewAppDefaultRow()
         content.orientation = .vertical
         content.alignment = .leading
