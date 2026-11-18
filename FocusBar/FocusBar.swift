@@ -48,8 +48,8 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         configure(moon, name: "focusbar_moon", action: #selector(toggleMiddle(_:)))
         configure(arrow, name: "focusbar_left", action: #selector(toggleLeft(_:)))
-        arrow.button?.title = ">"
         arrow.button?.font = .monospacedSystemFont(ofSize: 15, weight: .medium)
+        renderLeftControl(hidden: false)
         renderControls()
 
         let workspace = NSWorkspace.shared.notificationCenter
@@ -92,7 +92,8 @@ final class FocusBar: NSObject, NSApplicationDelegate {
 
     @objc private func toggleLeft(_ button: NSStatusBarButton) {
         guard NSApp.currentEvent?.type != .rightMouseUp else { return showMenu(from: button) }
-        sections.leftExpanded.toggle()
+        // A failed restriction leaves the icons visible, so retry hiding them.
+        sections.leftExpanded = failure == nil ? !sections.leftExpanded : false
         applyVisibility(deferManualHide: !sections.leftExpanded)
         if !sections.leftExpanded && !inventory.isAuthorized {
             openAccessibility()
@@ -106,7 +107,6 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     }
 
     private func renderControls() {
-        let leftAction = sections.leftExpanded ? "Hide left section" : "Show left section"
         let middleAction = sections.middleExpanded ? "Hide middle section" : "Show middle section"
         let focus: String
         switch sections.doNotDisturb {
@@ -115,12 +115,17 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         case .none: focus = "Do Not Disturb not synced"
         }
         let moonLabel = "\(focus) · \(middleAction)"
-        arrow.button?.setAccessibilityLabel(leftAction)
-        arrow.button?.toolTip = leftAction
         moon.button?.image = NSImage(systemSymbolName: sections.doNotDisturb == true ? "moon.fill" : "moon",
                                      accessibilityDescription: moonLabel)
         moon.button?.setAccessibilityLabel(moonLabel)
         moon.button?.toolTip = moonLabel
+    }
+
+    private func renderLeftControl(hidden: Bool) {
+        let action = hidden ? "Show left section" : "Hide left section"
+        arrow.button?.title = hidden ? "<" : ">"
+        arrow.button?.setAccessibilityLabel(action)
+        arrow.button?.toolTip = action
     }
 
     private func showMenu(from button: NSStatusBarButton) {
@@ -144,10 +149,10 @@ final class FocusBar: NSObject, NSApplicationDelegate {
     private func arrangementNotice(for button: NSStatusBarButton) -> String? {
         guard let measured = layout ?? lastCompleteLayout else { return nil }
         if button === arrow.button && measured.bundles(in: [.alwaysHidden]).isEmpty {
-            return "No app icons to the left of >"
+            return "No app icons to the left of the arrow"
         }
         if button === moon.button && measured.bundles(in: [.hidden]).isEmpty {
-            return "No app icons between > and the moon"
+            return "No app icons between the arrow and the moon"
         }
         return nil
     }
@@ -174,6 +179,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
             assertion?.invalidate()
             assertion = nil
             layout = nil
+            renderLeftControl(hidden: false)
             return
         }
 
@@ -212,7 +218,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
                   let right = self.moon.button?.window?.frame,
                   left.width > 0, right.width > 0, left.midX < right.midX,
                   abs(left.midY - right.midY) < 4 else {
-                return self.showUnrestricted("Command-drag > to the left of the moon.")
+                return self.showUnrestricted("Command-drag the arrow to the left of the moon.")
             }
             var measured = MenuBarLayoutResolver.resolve(
                 inventory: items, separatorFrame: right, alwaysHiddenSeparatorFrame: left,
@@ -252,6 +258,7 @@ final class FocusBar: NSObject, NSApplicationDelegate {
                 let previous = self.assertion
                 self.assertion = newAssertion
                 previous?.invalidate()
+                self.renderLeftControl(hidden: !shown.contains(.alwaysHidden))
             case .failure(let error):
                 NSLog("Hidden Bar Focus: %@", error.localizedDescription)
                 self.showUnrestricted("macOS declined the visibility change.")
@@ -269,5 +276,6 @@ final class FocusBar: NSObject, NSApplicationDelegate {
         assertion = nil
         layout = nil
         failure = reason
+        renderLeftControl(hidden: false)
     }
 }
