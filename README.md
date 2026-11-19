@@ -1,96 +1,37 @@
-<p align="center">
-	<img width="200" height="200" margin-right="100%" src="https://github.com/consolelabs/hidden/blob/develop/img/icon_512%402x.png?raw=true">
-</p>
-<p align="center">
-	<a href="https://webuild.community">
-		<img src="https://raw.githubusercontent.com/webuild-community/badge/master/svg/love.svg" />
-	</a>
-	<a href="https://github.com/consolelabs/hidden/actions/workflows/ci.yml">
- 		<img src="https://github.com/consolelabs/hidden/actions/workflows/ci.yml/badge.svg?branch=develop" alt="CI">
-	</a>
-	<a href="https://github.com/consolelabs/hidden/releases/latest">
- 		<img src="https://img.shields.io/badge/download-latest-brightgreen.svg" alt="download">
-	</a>
-	<a href="https://img.shields.io/badge/platform-macOS-lightgrey.svg">
- 		<img src="https://img.shields.io/badge/platform-macOS-lightgrey.svg" alt="platform">
-	</a>
-	<a href="https://img.shields.io/badge/requirements-macOS Ventura+-ff69b4.svg">
- 		<img src="https://img.shields.io/badge/requirements-macOS Ventura+-ff69b4.svg" alt="systemrequirements">
-	</a>
-</p>
+# Hidden Bar Focus
 
-## Hidden Bar
-Hidden Bar lets you hide menu bar items to give your Mac a cleaner look.
+Organize your macOS menu bar with two independent controls. Hide a group of icons with a click, hide specific apps from every section, or let the middle section follow Do Not Disturb.
 
-<p align="center">
-	<img width="400" src="img/store/1-tidy-menu-bar.png">
-	<img width="400" src="img/store/3-settings.png">
-</p>
+## How the menu bar works
 
-## 🚀 Install
-
-> **Official downloads.** Console Labs publishes Hidden Bar only through [GitHub Releases](https://github.com/consolelabs/hidden/releases), the Homebrew cask `hiddenbar`, and the [Mac App Store listing](https://itunes.apple.com/app/hidden-bar/id1452453066). Any other site offering Hidden Bar (for example `hiddenbar.app`) is not run by Console Labs.
-
-###  App Store
-
-[![AppStore](img/appstore.svg)](https://itunes.apple.com/app/hidden-bar/id1452453066)
-
-The App Store build is sandboxed and cannot hide icons on macOS 27. On macOS 27, use the GitHub or Homebrew build below.
-
-### Others
-
-The Hidden Bar is notarized before distributed out side App Store. It's safe to use 👍
-
-#### Using Homebrew
-
-```
-brew install --cask hiddenbar
+```text
+Left section    [ < / > ]    Middle section    [ Moon ]    Right section
 ```
 
-Coming from the App Store version? Quit it and move `/Applications/Hidden Bar.app` to the Trash first: Homebrew does not install over it. Your settings stay; the new version offers to import them on first launch.
+| Section | What to do |
+| --- | --- |
+| Left of the arrow | Click the arrow to show or hide this section. The default arrow reads `<` when hidden and `>` when shown. |
+| Between the arrow and the moon | Click the moon to show or hide this section. The moon is filled when the section is hidden and outlined when it is shown. |
+| Right of the moon | Enabled app icons stay visible when you close either section. |
 
-#### Manual download
+Open both sections, then hold **⌘ Command** and drag your icons into place. To hide a specific app even when both sections are open, right-click either control and go to **Preferences → Icons → Menu bar icons**. Turn the app’s switch off.
 
-- [Download latest version](https://github.com/consolelabs/hidden/releases/latest)
-- Open and drag the app to the Applications folder.
-- Launch Hidden and drag the icon in your menu bar (hold CMD) to the right so it is between some other icons.
+## Build and install
 
-## 🕹 Usage
+Use **macOS 27** with Apple’s Command Line Tools for Xcode installed. Run `xcode-select --install` if you need the tools.
 
-* `⌘` + drag to move the Hidden icons around in the menu bar.
-* Click the Arrow icon to hide menu bar items, and click it again to show them.
-* Option-click the Arrow to reach the always-hidden section, a second group that stays hidden when you click the arrow.
-* Settings has the hide delay, a global shortcut, other ways to reveal icons (hover, scroll, shake) and the arrow style.
+```sh
+git clone https://github.com/jiaqili3/hidden-bar-focus.git
+cd hidden-bar-focus
+./FocusBar/build.sh ./build/focus
+```
 
-<p align="center">
-	<img width="960" src="img/hero.gif">
-</p>
+Copy **Hidden Bar Focus.app** from `build/focus` to **Applications**. Quit any running copy of the original Hidden Bar, open **Hidden Bar Focus** from Applications, and enable it in **System Settings → Privacy & Security → Accessibility**. To start it automatically, turn on **Preferences → General → Open Hidden Bar at login**.
 
-## 📚 Documentation
+Manual controls work without Shortcuts. To make the middle section follow your Mac’s Do Not Disturb state or control Do Not Disturb from the moon’s menu, see the [Shortcuts setup](FocusBar/README.md#do-not-disturb). The [full guide](FocusBar/README.md) also covers upgrades and troubleshooting.
 
-- [Manual](docs/MANUAL.md): every setting, the hidden Terminal-only options, and troubleshooting.
-- [Architecture](docs/ARCHITECTURE.md): how the hiding trick works, topology, and known limits.
-- [Maintainer runbook](docs/RUNBOOK.md): build, behavioral verification, and release process.
+## Project and license
 
-## ✨<a href="https://github.com/consolelabs/hidden/graphs/contributors">Contributors</a>
+Hidden Bar Focus is a fork of [Console Labs’ Hidden Bar 1.13.1](https://github.com/consolelabs/hidden/tree/v1.13.1). It uses the original preferences window and macOS 27 visibility engine. The inherited [manual](docs/MANUAL.md), [architecture notes](docs/ARCHITECTURE.md), and [maintainer runbook](docs/RUNBOOK.md) describe the upstream app.
 
-This project exists thanks to all the people who contribute. Thank you guys so much 👏
-
-[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/0)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/0)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/1)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/1)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/2)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/2)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/3)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/3)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/4)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/4)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/5)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/5)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/6)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/6)[![](https://sourcerer.io/fame/phucledien/consolelabs/hidden/images/7)](https://sourcerer.io/fame/phucledien/consolelabs/hidden/links/7)
-
-Please read [this](CONTRIBUTING.md) before you make a contribution.
-
-## Requirements
-macOS version >= 13.0 (Ventura)
-
-Running an older macOS? The last release supporting macOS 10.13 High Sierra
-through 12 Monterey is [v1.10](https://github.com/consolelabs/hidden/releases/tag/v1.10).
-Later versions require macOS 13 because autostart moved to the `SMAppService`
-API introduced there.
-
-## You may also like
-- [Blurred](https://apps.apple.com/app/id1497527363) - A macOS utility that helps reduce distraction by dimming your inactive noise
-- [VimMotion](https://github.com/consolelabs/VimMotionApp) Vim style shortcut for MacOS
-## License
-
-MIT &copy; [Console Labs](https://console.so)
+Licensed under the [MIT License](LICENSE). Copyright © 2019 Dwarves Foundation and © 2026 Console Labs.
